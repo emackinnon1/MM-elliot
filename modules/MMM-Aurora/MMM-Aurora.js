@@ -1,3 +1,5 @@
+// const request = require("request");
+
 Module.register("MMM-Aurora", {
 	// Default module config.
 	defaults: {
@@ -7,15 +9,25 @@ Module.register("MMM-Aurora", {
 		animationSpeed: 3000 // fade in/out speed. 0 = no fade in/out
 	},
 
+	getScripts: function () {
+		return ["modules/" + this.name + "/node_modules/chart.js/dist/chart.min.js"];
+	},
+
 	start: function () {
-		self = this;
+		const self = this;
+		self.sendSocketNotification("START", { message: "start connection" });
 		this.url = "";
 
 		// Schedule update timer
-		var self = this;
+		this.getForecasts();
 		setInterval(function () {
-			self.updateDom(self.config.animationSpeed || 0);
+			self.getForecasts();
+			this.updateDom(self.config.animationSpeed || 0);
 		}, this.config.updateInterval);
+	},
+
+	getForecasts: function () {
+		this.sendSocketNotification("MMM-Aurora_GET_FORECAST");
 	},
 
 	getStyles: function () {
@@ -24,7 +36,9 @@ Module.register("MMM-Aurora", {
 
 	// Override dom generator.
 	getDom: function () {
+		const Self = this;
 		var wrapper = document.createElement("div");
+		wrapper.setAttribute("style", "position: relative; display: inline-block");
 		var image = document.createElement("img");
 		var getTimeStamp = new Date().getTime();
 		image.classList.add = "photo";
@@ -46,12 +60,65 @@ Module.register("MMM-Aurora", {
 
 		wrapper.appendChild(image);
 
+		const twentySevenDayChartConfig = {
+			type: "bar",
+			data: {
+				labels: Object.keys(Self.twentySevenDayForecast),
+				datasets: [
+					{
+						label: "27 day Aurora Forecast",
+						data: Object.values(Self.twentySevenDayForecast),
+						fill: true,
+						backgroundColor: "rgb(255, 255, 255, .3)",
+						borderColor: "rgb(255, 255, 255)"
+					}
+				]
+			},
+			options: {
+				scales: {
+					y: {
+						beginAtZero: true
+					}
+				}
+			}
+		};
+		var e = document.createElement("div");
+		wrapper.appendChild(e);
+
+		const twentySevenDayChart = document.createElement("canvas");
+		e.appendChild(twentySevenDayChart);
+		const tsChart = new Chart(twentySevenDayChart, twentySevenDayChartConfig);
+
+		twentySevenDayChart.width = 200 + "px";
+		twentySevenDayChart.height = 100 + "px";
+		twentySevenDayChart.setAttribute("style", "display: block");
+		tsChart.update();
+		wrapper.appendChild(twentySevenDayChart);
+
 		return wrapper;
+	},
+
+	socketNotificationReceived: function (notification, payload) {
+		console.log("socketNotificationReceived: " + notification);
+		if (notification === "MMM-Aurora_three_day_forecast") {
+			this.updateDom();
+			if (payload["data"] !== {}) {
+				this.threeDayForecast = payload["data"];
+				this.updateDom();
+			}
+		} else if (notification === "MMM-Aurora_twenty_seven_day_forecast") {
+			this.updateDom();
+			if (payload["data"] !== {}) {
+				this.twentySevenDayForecast = payload["data"];
+				this.updateDom();
+			}
+		}
 	},
 
 	/////  Add this function to the modules you want to control with Hello-Lucy //////
 
 	notificationReceived: function (notification, payload) {
+		console.log("notificationReceived: " + notification);
 		if (notification === "HIDE_AURORA") {
 			this.hide(1000);
 		} else if (notification === "SHOW_AURORA") {
